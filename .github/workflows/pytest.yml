@@ -7,7 +7,7 @@ on:
   push:
     branches: [ master, issue60 ]
   pull_request:
-    branches: [ master, issue60 ]
+    branches: [ master ]
 
 jobs:
   build:
