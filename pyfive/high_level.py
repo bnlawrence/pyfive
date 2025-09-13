@@ -91,7 +91,12 @@ class Group(Mapping):
         if dataobjs.is_dataset:
             if additional_obj != '.':
                 raise KeyError('%s is a dataset, not a group' % (obj_name))
-            return Dataset(obj_name, DatasetID(dataobjs), self)
+            
+            build_chunk_index = getattr(self, '_build_chunk_index', True)
+            return  Dataset(
+                obj_name, DatasetID(
+                    dataobjs, build_chunk_index=build_chunk_index), self
+            )
        
         try:
             # if true, this may well raise a NotImplementedError, if so, we need
@@ -204,7 +209,6 @@ class File(Group):
         self._superblock = SuperBlock(self._fh, 0)
         offset = self._superblock.offset_to_dataobjects
         dataobjects = DataObjects(self._fh, offset)
-
         self.file = self
         self.mode = 'r'
         self.userblock_size = 0

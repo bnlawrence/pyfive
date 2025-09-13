@@ -81,7 +81,6 @@ def test_numeric_array_attr_datatypes():
 
         assert hfile.attrs['vlen_str_array'][0] == b'Hello'
         assert hfile.attrs['vlen_str_array'][1] == b'World!'
-
         assert hfile.attrs['vlen_str_array'].dtype == np.dtype('S6')
 
 
@@ -137,6 +136,8 @@ def test_attributes_2():
         assert (ds.attrs["ascii_array"] == [ascii, foobar]).all()
         assert isinstance(ds.attrs["ascii_list"], np.ndarray)
         assert ds.attrs["ascii_list"] == "ascii"
+        assert isinstance(ds.attrs["ascii_empty"], str)
+        assert ds.attrs["ascii_empty"] == ""
 
         assert isinstance(ds.attrs["bytes"], str)
         assert ds.attrs["bytes"] == ascii
@@ -148,6 +149,8 @@ def test_attributes_2():
         assert (ds.attrs["bytes_array"] == [ascii, foobar]).all()
         assert isinstance(ds.attrs["bytes_list"], np.ndarray)
         assert ds.attrs["bytes_list"] == "ascii"
+        assert isinstance(ds.attrs["bytes_empty"], str)
+        assert ds.attrs["bytes_empty"] == ""
 
         foobar = "foobár"
         assert isinstance(ds.attrs["unicode_fixed"], np.bytes_)

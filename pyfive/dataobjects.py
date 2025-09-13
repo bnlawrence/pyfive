@@ -6,7 +6,7 @@ from collections import OrderedDict
 import struct
 import warnings
 from io import UnsupportedOperation
-
+from math import prod
 import numpy as np
 
 from pyfive.datatype_msg import DatatypeMessage
@@ -146,6 +146,7 @@ class DataObjects(object):
             offset = msg['offset_to_message']
             name, value = self.unpack_attribute(offset)
             attrs[name] = value
+
         # Attributes may also be stored in objects reference in the
         # Attribute Info Message (0x0015, 21).
         # Assume we can have both types though I suspect this is not the case
@@ -159,6 +160,7 @@ class DataObjects(object):
         #assume we only have one of these
         if len(attr_info) > 1:
             raise NotImplementedError('Multiple Attribute Info Messages not supported')
+
         offset = attr_info[0]['offset_to_message']
         data = _unpack_struct_from(ATTR_INFO_MESSAGE, self.msg_data, offset)
         heap_address = data['fractal_heap_address']
@@ -177,7 +179,7 @@ class DataObjects(object):
         adict = dict()
         for record in btree.iter_records():
             data = heap.get_data(record['heapid'])
-            name, value = self._parse_attribute_msg(data,0)
+            name, value = self._parse_attribute_msg(data, 0)
             adict[name] = value
         return adict
 
@@ -226,18 +228,28 @@ class DataObjects(object):
                     f"Attribute {name} type not implemented, set to None."
                 )
             return name, None
+
         offset += _padded_size(attr_dict['datatype_size'], padding_multiple)
 
         # Read the dataspace information
         shape, maxshape = determine_data_shape(buffer, offset)
-        items = int(np.prod(shape))
+        items = prod(shape)
         offset += _padded_size(attr_dict['dataspace_size'], padding_multiple)
+
+        if dtype == "S1" and offset == len(buffer):
+            # This attribute is (some sort of) empty string, so don't
+            # try to read anything from the buffer
+            items = 0
 
         # Read the value(s)
         value = self._attr_value(dtype, buffer, items, offset)
 
-        if shape == ():
-            value = value[0]
+        if not shape:
+            if dtype == "S1" and not value.size:
+                # This attribute is an empty string
+                value = b""
+            else:
+                value = value[0]
         else:
             value = value.reshape(shape)
 
@@ -304,10 +316,16 @@ class DataObjects(object):
     @property
     def maxshape(self):
         """ Maximum Shape of the dataset. (None for unlimited dimension) """
-        msg = self.find_msg_type(DATASPACE_MSG_TYPE)[0]
-        msg_offset = msg['offset_to_message']
-        shape, maxshape = determine_data_shape(self.msg_data, msg_offset)
-        return maxshape
+        try:
+            # Try to return a cached value
+            return self._cached_maxshape
+        except AttributeError:
+            # Get maxshape from the dataset, and cache it.
+            msg = self.find_msg_type(DATASPACE_MSG_TYPE)[0]
+            msg_offset = msg['offset_to_message']
+            shape, maxshape = determine_data_shape(self.msg_data, msg_offset)
+            self._cached_maxshape = maxshape
+            return maxshape
 
     @property
     def fillvalue(self):

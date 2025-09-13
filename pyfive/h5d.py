@@ -25,7 +25,8 @@ class DatasetID:
     instance, it is completely independent of the parent file, and it can be used 
     efficiently in distributed threads without thread contention to the b-tree etc.
     """
-    def __init__(self, dataobject, pseudo_chunking_size_MB=4):
+    def __init__(self, dataobject, pseudo_chunking_size_MB=4,
+                 build_chunk_index=True):
         """ 
         Instantiated with the pyfive datasetdataobject, we copy and cache everything 
         we want so that the only file operations are now data accesses.
@@ -41,8 +42,11 @@ class DatasetID:
         the set_pseudo_chunk_size method. Most users will not need to change 
         it.)
 
-        """
+        If build_chunk_index is True, then build the chunk index if it doesn't
+        exist, otherwise skip this step. Building the chunk index when it
+        is not needed can affect performance.
 
+        """
         self._order = dataobject.order
         fh = dataobject.fh
         
@@ -92,13 +96,15 @@ class DatasetID:
 
         self._index =  None
         # throws a flake8 wobbly for Python<3.10; match is Py3.10+ syntax
-        match self.layout_class:  # noqa
-            case 0:  #compact storage
-                raise NotImplementedError("Compact Storage")
-            case 1:  # contiguous storage
-                self.data_offset, = struct.unpack_from('<Q', dataobject.msg_data, self.property_offset)
-            case 2:  # chunked storage
-                self._build_index(dataobject)
+        if build_chunk_index:
+            # Build the chunk index, if it doesn't exist.
+            match self.layout_class:  # noqa
+                case 0:  #compact storage
+                    raise NotImplementedError("Compact Storage")
+                case 1:  # contiguous storage
+                    self.data_offset, = struct.unpack_from('<Q', dataobject.msg_data, self.property_offset)
+                case 2:  # chunked storage
+                    self._build_index(dataobject)
 
     def __hash__(self):
         """ The hash is based on assuming the file path, the location
@@ -290,7 +296,6 @@ class DatasetID:
             return
         
         logging.info(f'Building chunk index in pyfive {version("pyfive")}')
-       
         chunk_btree = BTreeV1RawDataChunks(
                 dataobject.fh, dataobject._chunk_address, dataobject._chunk_dims)
         
@@ -558,7 +563,12 @@ class DatasetID:
         #            the file and cache it.
         fh = self.__fh
         if fh.closed:
-            fh = open(self._filename, 'rb')
+            try:
+                # Try s3 being an s3fs.S3File object
+                fh = fh.s3.open(self._filename)
+            except AttributeError:
+                fh = open(self._filename, 'rb')
+
             self.__fh = fh
 
         return fh
@@ -579,7 +589,6 @@ class DatasetMeta:
     """
     def __init__(self, dataobject):
 
-        self.attributes = dataobject.compression
         self.maxshape = dataobject.maxshape
         self.compression = dataobject.compression
         self.compression_opts = dataobject.compression_opts
@@ -587,7 +596,6 @@ class DatasetMeta:
         self.fletcher32 = dataobject.fletcher32
         self.fillvalue = dataobject.fillvalue
         self.attributes = dataobject.get_attributes()
-
         #horrible kludge for now, this isn't really the same sort of thing
         #https://github.com/NCAS-CMS/pyfive/issues/13#issuecomment-2557121461
         # this is used directly in the Dataset init method.
